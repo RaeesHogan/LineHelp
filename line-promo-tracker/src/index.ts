@@ -1,192 +1,308 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { verifySignature } from './utils/line-signature';
+import { verifyLineSignature } from './utils/line-signature';
+import { KvPromoOrder } from './types';
+import { isPromoOrderMessage, parsePromoOrder, generateUniqueOrderKey, isCompletionMessage } from './utils/parser';
 
 const app = new Hono();
 
 // Enable CORS for dashboard
 app.use('/*', cors());
 
-// Serve static files from public directory (สำหรับ local dev)
+// Dashboard UI
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LINE Promo Tracker Dashboard</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    header { background: #00B900; color: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
-    h1 { font-size: 1.5rem; margin-bottom: 10px; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-    .stat-card { background: white; padding: 20px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .stat-number { font-size: 2rem; font-weight: bold; margin-bottom: 5px; }
-    .stat-label { font-size: 0.9rem; color: #666; }
-    .status-opened { color: #28a745; }
-    .status-pending { color: #ffc107; }
-    .status-check { color: #dc3545; }
-    .filters { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-    .filter-group { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-    .filter-btn { padding: 8px 16px; border: 2px solid #ddd; background: white; border-radius: 20px; cursor: pointer; }
-    .filter-btn.active { background: #00B900; color: white; border-color: #00B900; }
-    .search-input { width: 100%; padding: 10px 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; }
-    .order-list { background: white; border-radius: 8px; overflow: hidden; }
-    .order-item { padding: 15px; border-bottom: 1px solid #eee; }
-    .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
-    .order-meta { display: flex; gap: 15px; font-size: 0.85rem; color: #888; margin-top: 10px; flex-wrap: wrap; }
-    .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; }
-    .status-opened { background: #d4edda; color: #155724; }
-    .status-pending { background: #fff3cd; color: #856404; }
-    .status-check { background: #f8d7da; color: #721c24; }
-    .empty-state { text-align: center; padding: 40px; color: #888; }
-    @media (max-width: 768px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-  </style>
+  <title>LINE Promo Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600&display=swap'); body { font-family: 'Sarabun', sans-serif; }</style>
 </head>
-<body>
-  <div class="container">
-    <header><h1>📊 LINE Promo Tracker Dashboard</h1><p>ติดตามสถานะการเปิดโปรแบบเรียลไทม์</p></header>
-    <div class="stats">
-      <div class="stat-card"><div class="stat-number" id="total-count">0</div><div class="stat-label">รายการทั้งหมด</div></div>
-      <div class="stat-card"><div class="stat-number status-opened" id="opened-count">0</div><div class="stat-label">🟢 เปิดแล้ว</div></div>
-      <div class="stat-card"><div class="stat-number status-pending" id="pending-count">0</div><div class="stat-label">🟡 ยังไม่เปิด</div></div>
-      <div class="stat-card"><div class="stat-number status-check" id="check-count">0</div><div class="stat-label">⚠️ ต้องตรวจสอบ</div></div>
+<body class="bg-gray-50 text-gray-800">
+  <div id="app" class="container mx-auto p-4 max-w-5xl">
+    <div class="text-center py-10">
+      <h1 class="text-2xl font-bold mb-4">📊 LINE Promo Tracker Dashboard</h1>
+      <p class="text-gray-600">กำลังโหลดข้อมูล...</p>
     </div>
-    <div class="filters">
-      <div class="filter-group">
-        <button class="filter-btn active" data-filter="all">ทั้งหมด</button>
-        <button class="filter-btn" data-filter="opened">เปิดแล้ว</button>
-        <button class="filter-btn" data-filter="pending">ยังไม่เปิด</button>
-        <button class="filter-btn" data-filter="check">ต้องตรวจสอบ</button>
-      </div>
-      <input type="text" class="search-input" placeholder="🔍 ค้นหาด้วย รหัสสินค้า, ลำดับออเดอร์, เจ้าของ, พนักงาน..." id="search-input" />
-    </div>
-    <div class="order-list" id="order-list"><div class="empty-state"><p>ยังไม่มีข้อมูลรายการเปิดโปร</p></div></div>
   </div>
   <script>
-    let currentFilter = 'all', searchQuery = '', orders = [];
-    async function fetchOrders() {
+    const API_BASE = '';
+    async function fetchStats() {
       try {
-        const response = await fetch('/api/orders');
-        if (response.ok) { const data = await response.json(); orders = data.orders || []; updateStats(); renderOrders(); }
-      } catch (error) { console.log('Fetching orders:', error); }
+        const res = await fetch(\`\${API_BASE}/api/stats\`);
+        if (!res.ok) throw new Error('Failed');
+        return await res.json();
+      } catch (e) { return { total: 0, pending: 0, completed: 0, review: 0 }; }
     }
-    function updateStats() {
-      document.getElementById('total-count').textContent = orders.length;
-      document.getElementById('opened-count').textContent = orders.filter(o => o.status === 'opened').length;
-      document.getElementById('pending-count').textContent = orders.filter(o => o.status === 'pending').length;
-      document.getElementById('check-count').textContent = orders.filter(o => o.status === 'check').length;
+    async function fetchOrders(statusFilter = 'all') {
+      try {
+        const res = await fetch(\`\${API_BASE}/api/orders?status=\${statusFilter}\`);
+        if (!res.ok) throw new Error('Failed');
+        return await res.json();
+      } catch (e) { return []; }
     }
-    function getFilteredOrders() {
-      return orders.filter(order => {
-        const matchesFilter = currentFilter === 'all' || order.status === currentFilter;
-        if (!searchQuery) return matchesFilter;
-        const query = searchQuery.toLowerCase();
-        const matchesSearch = [order.productInfo, order.orderNumber, order.ownerName, order.assignedStaff, order.responseMessage].some(f => f?.toLowerCase().includes(query));
-        return matchesFilter && matchesSearch;
-      });
+    function getStatusBadge(status) {
+      const map = {
+        'pending': '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">🟡 ยังไม่เปิด</span>',
+        'completed': '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">🟢 เปิดแล้ว</span>',
+        'review': '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">⚠️ ต้องตรวจสอบ</span>'
+      };
+      return map[status] || status;
     }
-    function renderOrders() {
-      const filtered = getFilteredOrders();
-      const container = document.getElementById('order-list');
-      if (filtered.length === 0) { container.innerHTML = '<div class="empty-state"><p>ไม่พบรายการที่ตรงกับเงื่อนไข</p></div>'; return; }
-      container.innerHTML = filtered.map(order => \`
-        <div class="order-item">
-          <div class="order-header">
-            <div><div style="font-weight:bold">#\${order.orderNumber || 'N/A'} - \${order.productInfo || 'ไม่มีข้อมูล'}</div></div>
-            <span class="status-badge status-\${order.status}">\${{opened:'🟢 เปิดแล้ว',pending:'🟡 ยังไม่เปิด',check:'⚠️ ต้องตรวจสอบ'}[order.status]||order.status}</span>
+    function timeAgo(ts) {
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return 'เพิ่งส่ง';
+      const m = Math.floor(s / 60);
+      if (m < 60) return \`\${m} นาทีที่แล้ว\`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return \`\${h} ชั่วโมงที่แล้ว\`;
+      return \`\${Math.floor(h / 24)} วันที่แล้ว\`;
+    }
+    async function renderDashboard() {
+      const stats = await fetchStats();
+      const orders = await fetchOrders('all');
+      const html = \`
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold mb-4 text-gray-900">📊 สถานะการเปิดโปร</h1>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200"><div class="text-sm text-gray-500">ทั้งหมด</div><div class="text-2xl font-bold">\${stats.total}</div></div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-yellow-200"><div class="text-sm text-yellow-600">ยังไม่เปิด</div><div class="text-2xl font-bold text-yellow-700">\${stats.pending}</div></div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-green-200"><div class="text-sm text-green-600">เปิดแล้ว</div><div class="text-2xl font-bold text-green-700">\${stats.completed}</div></div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-red-200"><div class="text-sm text-red-600">ต้องตรวจสอบ</div><div class="text-2xl font-bold text-red-700">\${stats.review}</div></div>
           </div>
-          <div class="order-meta">
-            <span>👤 \${order.ownerName||'-'}</span><span>👨‍💼 \${order.assignedStaff||'-'}</span><span>🕒 \${new Date(order.createdAt||Date.now()).toLocaleString('th-TH')}</span>
+        </div>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="font-semibold text-lg">รายการล่าสุด</h2>
+            <span class="text-xs text-gray-500">อัพเดท: \${new Date().toLocaleTimeString('th-TH')}</span>
           </div>
-        </div>\`).join('');
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-gray-50 text-gray-600">
+                <tr><th class="px-4 py-3">ลำดับ</th><th class="px-4 py-3">สินค้า</th><th class="px-4 py-3">เจ้าของ</th><th class="px-4 py-3">พนักงาน</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3">เวลา</th></tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                \${orders.length === 0 ? '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">ยังไม่มีข้อมูล</td></tr>' : ''}
+                \${orders.map(o => \`<tr class="hover:bg-gray-50">
+                  <td class="px-4 py-3 font-medium">\${o.order_number}</td>
+                  <td class="px-4 py-3 max-w-xs truncate" title="\${o.product_info}">\${o.product_info}</td>
+                  <td class="px-4 py-3">\${o.owner_name}</td>
+                  <td class="px-4 py-3">@\${o.assigned_staff}</td>
+                  <td class="px-4 py-3">\${getStatusBadge(o.status)}</td>
+                  <td class="px-4 py-3 text-gray-500">\${timeAgo(o.created_at)}</td>
+                </tr>\`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      \`;
+      document.getElementById('app').innerHTML = html;
     }
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active'); currentFilter = btn.dataset.filter; renderOrders();
-      });
-    });
-    document.getElementById('search-input').addEventListener('input', (e) => { searchQuery = e.target.value; renderOrders(); });
-    fetchOrders(); setInterval(fetchOrders, 30000);
+    renderDashboard();
+    setInterval(renderDashboard, 30000);
   </script>
 </body>
 </html>`);
 });
 
-// API endpoint for dashboard
-app.get('/api/orders', async (c) => {
-  // TODO: Fetch orders from KV in Phase 2
-  return c.json({ orders: [] });
-});
-
-// LINE Webhook endpoint
+// Webhook Endpoint
 app.post('/webhook', async (c) => {
   const signature = c.req.header('X-Line-Signature');
-  if (!signature) {
-    console.log('Missing signature');
-    return c.text('Bad Request', 400);
-  }
+  if (!signature) return c.json({ error: 'No signature' }, 400);
 
   const body = await c.req.text();
+  const channelSecret = c.env?.LINE_CHANNEL_SECRET;
   
-  // ใน production ต้อง verify signature
-  // const isValid = await verifySignature(body, signature);
-  // if (!isValid) {
-  //   return c.text('Unauthorized', 401);
-  // }
-
-  let event;
-  try {
-    event = JSON.parse(body);
-  } catch (err) {
-    console.log('Invalid JSON');
-    return c.text('Bad Request', 400);
+  if (channelSecret) {
+    const isValid = await verifyLineSignature(body, signature, channelSecret);
+    if (!isValid) return c.json({ error: 'Invalid signature' }, 400);
   }
 
-  console.log('Received webhook event:', JSON.stringify(event, null, 2));
+  let event: any;
+  try { event = JSON.parse(body); } 
+  catch (e) { return c.json({ error: 'Invalid JSON' }, 400); }
 
-  // ประมวลผล events จาก LINE
-  if (event.events && Array.isArray(event.events)) {
-    for (const evt of event.events) {
-      await processEvent(evt);
+  const kv = c.env.PROMO_DB;
+  if (!kv) return c.json({ error: 'Database not configured' }, 500);
+
+  const now = Date.now();
+  const allOrdersKey = 'all_orders';
+  
+  // Get or initialize all_orders list
+  let allOrderIds: string[] = await kv.get(allOrdersKey, 'json') || [];
+
+  for (const lineEvent of event.events) {
+    if (lineEvent.type !== 'message' || lineEvent.message?.type !== 'text') continue;
+
+    const messageText = lineEvent.message.text || '';
+    const messageId = lineEvent.message.id;
+    const timestamp = lineEvent.timestamp;
+    const groupId = lineEvent.source.groupId || 'unknown';
+    const userId = lineEvent.source.userId || 'unknown';
+
+    console.log(`[MSG] ${timestamp}: ${messageText.substring(0, 50)}...`);
+
+    // Check if it's a promo order creation
+    if (isPromoOrderMessage(messageText)) {
+      const parsed = parsePromoOrder(messageText);
+      if (parsed) {
+        const uniqueId = generateUniqueOrderKey(parsed, messageId);
+        const expiresAt = now + (7 * 24 * 60 * 60 * 1000);
+
+        const newOrder: KvPromoOrder = {
+          unique_id: uniqueId,
+          order_number: parsed.order_number!,
+          product_info: parsed.product_info!,
+          owner_name: parsed.owner_name!,
+          assigned_staff: parsed.assigned_staff!,
+          original_message_id: messageId,
+          original_message_text: messageText,
+          created_at: now,
+          status: 'pending',
+          expires_at: expiresAt,
+          matched_by: 'auto',
+          match_confidence: 1.0,
+          matching_reason: 'Parsed from new promo message'
+        };
+
+        await kv.put(uniqueId, JSON.stringify(newOrder));
+        
+        if (!allOrderIds.includes(uniqueId)) {
+          allOrderIds.push(uniqueId);
+          await kv.put(allOrdersKey, JSON.stringify(allOrderIds));
+        }
+
+        console.log(`[NEW ORDER] ${uniqueId}: ${parsed.product_info}`);
+      } else {
+        console.log(`[PARSE FAIL] Could not parse: ${messageText}`);
+      }
+    } 
+    // Check if it's a completion response
+    else if (isCompletionMessage(messageText)) {
+      const productCodes = extractProductCodes(messageText);
+      
+      // Find pending orders
+      const pendingOrders: KvPromoOrder[] = [];
+      for (const id of allOrderIds) {
+        const data = await kv.get(id, 'json');
+        if (data && data.status === 'pending') {
+          pendingOrders.push(data);
+        }
+      }
+
+      const matched: KvPromoOrder[] = [];
+      for (const code of productCodes) {
+        for (const order of pendingOrders) {
+          if (order.product_info.includes(code) || order.product_info.toUpperCase().includes(code.toUpperCase())) {
+            if (!matched.find(o => o.unique_id === order.unique_id)) {
+              matched.push(order);
+            }
+          }
+        }
+      }
+
+      if (matched.length > 0) {
+        for (const order of matched) {
+          const newStatus: 'completed' | 'review' = matched.length === 1 ? 'completed' : 'review';
+          
+          const updatedOrder: KvPromoOrder = {
+            ...order,
+            status: newStatus,
+            response_message_id: messageId,
+            response_message_text: messageText,
+            response_at: now,
+            matched_by: matched.length === 1 ? 'content' : 'ambiguous',
+            match_confidence: matched.length === 1 ? 0.8 : 0.3,
+            matching_reason: matched.length === 1 ? 'Matched by product code' : 'Multiple matches found'
+          };
+
+          await kv.put(order.unique_id, JSON.stringify(updatedOrder));
+          console.log(`[UPDATE] ${order.unique_id} -> ${newStatus}`);
+        }
+      } else {
+        console.log(`[MATCH FAIL] No matching orders for: ${messageText}`);
+      }
     }
   }
 
-  return c.text('OK');
+  return c.json({ success: true });
 });
 
-async function processEvent(event: any) {
-  console.log('Processing event type:', event.type);
-
-  if (event.type === 'message') {
-    const message = event.message;
-    const source = event.source;
-    
-    console.log('Message received:', {
-      messageId: message.id,
-      userId: event.user?.userId || event.source?.userId,
-      groupId: source?.groupId,
-      text: message.text,
-      timestamp: event.timestamp
-    });
-
-    // TODO: Phase 2 - Parse promo order messages
-    // TODO: Phase 3 - Match response messages
-    
-    // บันทึก raw message (Phase 1)
-    // await saveMessage(event);
-  } else if (event.type === 'follow') {
-    console.log('User followed:', event.source);
-  } else if (event.type === 'unfollow') {
-    console.log('User unfollowed:', event.source);
-  } else if (event.type === 'join') {
-    console.log('Bot joined:', event.source);
-  } else if (event.type === 'leave') {
-    console.log('Bot left:', event.source);
-  }
+function extractProductCodes(text: string): string[] {
+  const pattern = /([A-Za-z]+\d+[A-Za-z0-9]*)/g;
+  const matches = text.match(pattern);
+  if (!matches) return [];
+  const commonWords = ['แล้ว', 'จ้า', 'ครับ', 'ค่ะ', 'key', 'ตาม', 'ได้เลย', 'เจ้าของ', 'แก้ไข', 'รร', 'all'];
+  return matches.filter(m => m.length >= 3 && !commonWords.some(w => w.toLowerCase() === m.toLowerCase()));
 }
+
+// API: Get Stats
+app.get('/api/stats', async (c) => {
+  const kv = c.env.PROMO_DB;
+  if (!kv) return c.json({ error: 'DB not found' }, 500);
+
+  let total = 0, pending = 0, completed = 0, review = 0;
+  const allOrderIds: string[] = await kv.get('all_orders', 'json') || [];
+
+  for (const id of allOrderIds) {
+    const order: KvPromoOrder = await kv.get(id, 'json');
+    if (order && (!order.expires_at || Date.now() <= order.expires_at)) {
+      total++;
+      if (order.status === 'pending') pending++;
+      else if (order.status === 'completed') completed++;
+      else if (order.status === 'review') review++;
+    }
+  }
+
+  return c.json({ total, pending, completed, review });
+});
+
+// API: Get Orders
+app.get('/api/orders', async (c) => {
+  const kv = c.env.PROMO_DB;
+  if (!kv) return c.json({ error: 'DB not found' }, 500);
+
+  const statusFilter = c.req.query('status') || 'all';
+  const allOrderIds: string[] = await kv.get('all_orders', 'json') || [];
+  const orders: KvPromoOrder[] = [];
+
+  for (const id of allOrderIds) {
+    const order: KvPromoOrder = await kv.get(id, 'json');
+    if (order && (!order.expires_at || Date.now() <= order.expires_at)) {
+      if (statusFilter === 'all' || order.status === statusFilter) {
+        orders.push(order);
+      }
+    }
+  }
+
+  orders.sort((a, b) => b.created_at - a.created_at);
+  return c.json(orders);
+});
+
+// Cleanup endpoint (for cron)
+app.get('/cleanup', async (c) => {
+  const kv = c.env.PROMO_DB;
+  if (!kv) return c.text('DB not found', 500);
+
+  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+  const allOrderIds: string[] = await kv.get('all_orders', 'json') || [];
+  let deletedCount = 0;
+  const validIds: string[] = [];
+
+  for (const id of allOrderIds) {
+    const order: KvPromoOrder = await kv.get(id, 'json');
+    if (order && order.created_at < sevenDaysAgo) {
+      await kv.delete(id);
+      deletedCount++;
+    } else {
+      validIds.push(id);
+    }
+  }
+
+  await kv.put('all_orders', JSON.stringify(validIds));
+  return c.text(`Cleaned up ${deletedCount} old records`);
+});
 
 export default app;

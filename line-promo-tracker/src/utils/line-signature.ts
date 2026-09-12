@@ -1,23 +1,16 @@
-import crypto from 'crypto';
+// src/utils/line-signature.ts
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
-/**
- * Verify LINE webhook signature
- * @param body - Raw request body
- * @param signature - X-Line-Signature header
- * @returns true if signature is valid
- */
-export async function verifySignature(body: string, signature: string): Promise<boolean> {
-  const channelSecret = process.env.LINE_CHANNEL_SECRET;
+export async function verifyLineSignature(
+  body: string,
+  signature: string,
+  channelSecret: string
+): Promise<boolean> {
+  const hash = createHmac('sha256', channelSecret).update(body).digest('base64');
   
-  if (!channelSecret) {
-    console.error('LINE_CHANNEL_SECRET is not set');
+  try {
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(hash));
+  } catch (e) {
     return false;
   }
-
-  const hash = crypto
-    .createHmac('sha256', channelSecret)
-    .update(body, 'utf8')
-    .digest('base64');
-
-  return hash === signature;
 }
