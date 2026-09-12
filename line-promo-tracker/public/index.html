@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE Promo Tracker Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      background: #00B900;
+      color: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    .status-opened { color: #28a745; }
+    .status-pending { color: #ffc107; }
+    .status-check { color: #dc3545; }
+
+    .filters {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .filter-btn {
+      padding: 8px 16px;
+      border: 2px solid #ddd;
+      background: white;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background: #00B900;
+      color: white;
+      border-color: #00B900;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 10px 15px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+
+    .order-list {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .order-item {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      transition: background 0.2s;
+    }
+
+    .order-item:hover {
+      background: #f9f9f9;
+    }
+
+    .order-item:last-child {
+      border-bottom: none;
+    }
+
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .order-info {
+      flex: 1;
+    }
+
+    .order-number {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .product-info {
+      color: #666;
+      font-size: 0.9rem;
+      margin-top: 5px;
+    }
+
+    .order-meta {
+      display: flex;
+      gap: 15px;
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .status-opened {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-check {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .stat-number {
+        font-size: 1.5rem;
+      }
+
+      .order-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 LINE Promo Tracker Dashboard</h1>
+      <p>ติดตามสถานะการเปิดโปรแบบเรียลไทม์</p>
+    </header>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-number" id="total-count">0</div>
+        <div class="stat-label">รายการทั้งหมด</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number status-opened" id="opened-count">0</div>
+        <div class="stat-label">🟢 เปิดแล้ว</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number status-pending" id="pending-count">0</div>
+        <div class="stat-label">🟡 ยังไม่เปิด</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number status-check" id="check-count">0</div>
+        <div class="stat-label">⚠️ ต้องตรวจสอบ</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">ทั้งหมด</button>
+        <button class="filter-btn" data-filter="opened">เปิดแล้ว</button>
+        <button class="filter-btn" data-filter="pending">ยังไม่เปิด</button>
+        <button class="filter-btn" data-filter="check">ต้องตรวจสอบ</button>
+      </div>
+      <input 
+        type="text" 
+        class="search-input" 
+        placeholder="🔍 ค้นหาด้วย รหัสสินค้า, ลำดับออเดอร์, เจ้าของ, พนักงาน..."
+        id="search-input"
+      />
+    </div>
+
+    <div class="order-list" id="order-list">
+      <div class="empty-state">
+        <p>ยังไม่มีข้อมูลรายการเปิดโปร</p>
+        <p style="margin-top: 10px; font-size: 0.9rem;">ข้อมูลจะปรากฏที่นี่เมื่อมีข้อความจาก LINE Group</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = ''; // ใช้ relative path สำหรับ Cloudflare Pages
+    let currentFilter = 'all';
+    let searchQuery = '';
+    let orders = [];
+
+    // Fetch data from API
+    async function fetchOrders() {
+      try {
+        const response = await fetch(`${API_BASE}/api/orders`);
+        if (response.ok) {
+          const data = await response.json();
+          orders = data.orders || [];
+          updateStats();
+          renderOrders();
+        }
+      } catch (error) {
+        console.log('Fetching orders:', error);
+      }
+    }
+
+    // Update statistics
+    function updateStats() {
+      const total = orders.length;
+      const opened = orders.filter(o => o.status === 'opened').length;
+      const pending = orders.filter(o => o.status === 'pending').length;
+      const check = orders.filter(o => o.status === 'check').length;
+
+      document.getElementById('total-count').textContent = total;
+      document.getElementById('opened-count').textContent = opened;
+      document.getElementById('pending-count').textContent = pending;
+      document.getElementById('check-count').textContent = check;
+    }
+
+    // Filter and search orders
+    function getFilteredOrders() {
+      return orders.filter(order => {
+        const matchesFilter = currentFilter === 'all' || order.status === currentFilter;
+        
+        if (!searchQuery) return matchesFilter;
+        
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          order.productInfo?.toLowerCase().includes(query) ||
+          order.orderNumber?.toLowerCase().includes(query) ||
+          order.ownerName?.toLowerCase().includes(query) ||
+          order.assignedStaff?.toLowerCase().includes(query) ||
+          order.responseMessage?.toLowerCase().includes(query);
+        
+        return matchesFilter && matchesSearch;
+      });
+    }
+
+    // Render orders list
+    function renderOrders() {
+      const filtered = getFilteredOrders();
+      const container = document.getElementById('order-list');
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>ไม่พบรายการที่ตรงกับเงื่อนไข</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(order => `
+        <div class="order-item">
+          <div class="order-header">
+            <div class="order-info">
+              <div class="order-number">#${order.orderNumber || 'N/A'} - ${order.productInfo || 'ไม่มีข้อมูล'}</div>
+              <div class="product-info">${order.productInfo || ''}</div>
+            </div>
+            <span class="status-badge status-${order.status}">${getStatusText(order.status)}</span>
+          </div>
+          <div class="order-meta">
+            <span>👤 เจ้าของ: ${order.ownerName || '-'}</span>
+            <span>👨‍💼 พนักงาน: ${order.assignedStaff || '-'}</span>
+            <span>🕒 แจ้ง: ${formatTime(order.createdAt)}</span>
+            ${order.responseAt ? `<span>✅ ตอบ: ${formatTime(order.responseAt)}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Get status text in Thai
+    function getStatusText(status) {
+      const texts = {
+        'opened': '🟢 เปิดแล้ว',
+        'pending': '🟡 ยังไม่เปิด',
+        'check': '⚠️ ต้องตรวจสอบ'
+      };
+      return texts[status] || status;
+    }
+
+    // Format timestamp to Thai time
+    function formatTime(timestamp) {
+      if (!timestamp) return '-';
+      const date = new Date(timestamp);
+      return date.toLocaleString('th-TH', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Event listeners for filters
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderOrders();
+      });
+    });
+
+    // Event listener for search
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderOrders();
+    });
+
+    // Initial load and auto-refresh every 30 seconds
+    fetchOrders();
+    setInterval(fetchOrders, 30000);
+  </script>
+</body>
+</html>
