@@ -1,0 +1,19 @@
+name = "line-promo-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# KV Namespace binding (ต้องสร้าง KV ก่อน)
+[[kv_namespaces]]
+binding = "PROMO_DB"
+id = "preview_promo_db_id"  # สำหรับ preview mode ใน local
+
+[vars]
+LINE_CHANNEL_SECRET = "142f5dc7ba636bf87859eb97fe662357"
+
+# Serve static files from public directory
+[site]
+bucket = "./public"
+
+# สำหรับ development เท่านั้น
+[dev]
+port = 8787
